@@ -1,0 +1,90 @@
+Privacy by Design Review with LINDDUN Threat Modeling
+Objectives
+By completing this lab, you will:
+
+Model an ID verification microservice's data flows and apply LINDDUN systematically to identify privacy threats.
+Map identified threats to GDPR Article 5/25 principles and GCC PDPL (e.g., UAE Federal Decree-Law No. 45 of 2021, KSA PDPL) provisions.
+Select and justify Privacy Enhancing Technologies (PETs) as mitigations.
+Produce a prioritized, severity-rated remediation backlog suitable for a privacy architect deliverable.
+Prerequisites
+Working knowledge of LINDDUN categories (Linkability, Identifiability, Non-repudiation, Detectability, Disclosure of information, Unawareness, Non-compliance).
+Familiarity with GDPR principles (lawfulness, purpose limitation, data minimization, storage limitation, integrity/confidentiality, accountability) and basic PDPL concepts.
+Comfort with DFD (Data Flow Diagram) notation and threat modeling terminology (STRIDE-adjacent).
+Linux CLI basics and Git.
+Environment Setup
+Single Linux machine (Al Nafi Start Lab). Run:
+
+sudo apt update
+sudo apt install -y default-jre git curl
+# draw.io desktop (AppImage, offline-capable)
+curl -L -o drawio.AppImage https://github.com/jgraph/drawio-desktop/releases/latest/download/drawio-x86_64.AppImage
+chmod +x drawio.AppImage
+./drawio.AppImage --no-sandbox &
+Create working directory: mkdir -p ~/linddun-lab/{diagrams,threats,backlog} && cd ~/linddun-lab
+Initialize git: git init
+Scenario
+System: IDVerify — a microservice verifying user identity documents (passport/national ID) for onboarding to a GCC fintech app. Components:
+
+Mobile client (uploads ID image + selfie)
+API Gateway
+OCR/Face-Match Service (third-party ML API call)
+PostgreSQL datastore (stores extracted PII, verification status)
+Audit Logging Service
+Admin Dashboard (compliance officers review flagged cases)
+Tasks
+Task 1: Build the DFD
+Using draw.io, create a DFD with standard elements: external entities, processes, data stores, data flows, trust boundaries.
+Include all 6 components above; mark at least 2 trust boundary crossings (e.g., client→gateway, service→third-party OCR API).
+Label each data flow with the data category transmitted (e.g., "ID image (biometric-adjacent)", "match score", "audit event").
+Export as ~/linddun-lab/diagrams/idverify_dfd.drawio and a PNG for reference.
+Deliverable check: diagram must have ≥6 elements, ≥7 labeled flows, ≥2 trust boundaries.
+
+Task 2: Enumerate LINDDUN Threats
+For each DFD element (process, data store, data flow), apply the seven LINDDUN categories systematically.
+Use the LINDDUN threat tree catalog (mapping element type → applicable categories) as your reference — not all categories apply to all element types.
+Create threats/linddun_register.csv with columns:
+threat_id,dfd_element,linddun_category,threat_description,attacker_capability,affected_data
+Minimum coverage: identify at least 12 distinct threats spanning at least 5 of the 7 LINDDUN categories, covering the OCR third-party call, the datastore, and the audit log specifically (common blind spots).
+Hint areas to investigate: linkability between selfie and stored ID (biometric linkage), non-repudiation risks in audit logs (can a user deny consent?), unawareness (does the client know biometric data leaves the trust boundary to a third-party API), detectability of user existence via API response timing/error codes.
+
+Task 3: Map Threats to GDPR & PDPL
+Extend the register into threats/compliance_mapping.csv adding columns:
+threat_id,gdpr_article,gdpr_principle,pdpl_reference,compliance_gap_description
+For GDPR, reference specific articles (5, 6, 9, 25, 32, 35) — not just "GDPR" generally.
+For PDPL, select the relevant GCC jurisdiction articles (UAE PDPL / KSA PDPL / DIFC DP Law) — research and cite article numbers for data minimization, sensitive data (biometric) processing, and cross-border transfer (relevant to the third-party OCR API call).
+Flag every threat involving biometric data explicitly under GDPR Art. 9 (special category data) and equivalent PDPL sensitive-data provisions.
+Task 4: Propose PET-Based Mitigations
+For each threat, propose a specific PET or architectural control. Do not use generic answers like "encrypt data" — specify mechanism and where in the DFD it applies.
+Consider: tokenization/pseudonymization of extracted PII before storage, on-device face-matching (data minimization at source), differential privacy for aggregate audit analytics, homomorphic encryption or secure enclaves for third-party OCR calls, k-anonymity for admin dashboard exports, unlinkable identifiers (per-session tokens instead of persistent user IDs) to reduce linkability.
+Create threats/mitigations.csv:
+threat_id,proposed_pet,implementation_location,residual_risk,implementation_cost(L/M/H)
+Task 5: Remediation Backlog with Severity Ratings
+Consolidate into backlog/remediation_backlog.md.
+Apply a severity scoring method — use either LINDDUN's risk scoring (impact × likelihood) or repurpose a DREAD-style score. Justify your chosen method briefly.
+Backlog entry format:
+| ID | LINDDUN Category | Severity (Critical/High/Med/Low) | GDPR/PDPL Ref | Mitigation Summary | Owner (role) | Target Sprint |
+Sort by severity descending. Minimum 12 entries corresponding to Task 2 threats.
+Add a one-paragraph executive summary at the top: overall privacy risk posture, top 3 systemic issues (e.g., "third-party OCR dependency lacks contractual/DPA controls").
+Verification
+Run from ~/linddun-lab:
+
+test -f diagrams/idverify_dfd.drawio && echo "DFD: OK" || echo "DFD: MISSING"
+wc -l threats/linddun_register.csv        # expect >=13 lines (header + 12 threats)
+cut -d, -f3 threats/linddun_register.csv | sort -u   # confirm >=5 LINDDUN categories present
+wc -l threats/compliance_mapping.csv
+wc -l threats/mitigations.csv
+grep -c "Critical\|High\|Med\|Low" backlog/remediation_backlog.md
+Manual review checklist:
+
+ Every threat_id in the register has a matching row in compliance_mapping.csv and mitigations.csv (join on threat_id, verify no orphans).
+ At least one threat addresses the third-party OCR API trust boundary.
+ At least one threat addresses audit log non-repudiation/unawareness.
+ Backlog sorted by severity; executive summary present.
+# quick orphan check
+comm -3 <(cut -d, -f1 threats/linddun_register.csv | sort) \
+        <(cut -d, -f1 threats/mitigations.csv | sort)
+Commit your work:
+
+git add -A && git commit -m "LINDDUN privacy threat model for IDVerify service"
+Conclusion
+In this lab, you performed an end-to-end Privacy by Design review of an ID verification microservice using the LINDDUN methodology. You constructed a data flow diagram identifying trust boundaries around a sensitive biometric processing pipeline, systematically enumerated privacy threats across all seven LINDDUN categories, and traced each threat to concrete GDPR articles and GCC PDPL provisions — building the legal-technical linkage required of a Privacy Architect under GDPR Article 25. You then selected targeted PETs (tokenization, on-device processing, differential privacy, unlinkable identifiers) rather than generic controls, and synthesized findings into a severity-ranked remediation backlog suitable for engineering sprint planning. This workflow mirrors real-world Privacy Impact Assessment (PIA/DPIA) practice and directly supports IAPP CIPT competencies in embedding privacy engineering into system architecture.
