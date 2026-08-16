@@ -1,0 +1,177 @@
+Mapping Personal Data Inventory for GDPR Compliance
+Objectives
+By the end of this lab, you will be able to:
+
+Build a simple Record of Processing Activities (RoPA) using a CSV-based data inventory
+Identify data sources, data subject categories, and processing purposes
+Tag sensitive/special category data (biometric, health)
+Document lawful basis and retention periods per GDPR Article 30 and GCC PDPL
+Export a RoPA report for review by a Data Protection Officer (DPO)
+Prerequisites
+Basic familiarity with the Linux terminal (navigating folders, editing files)
+No prior privacy/legal knowledge required — key terms are explained below
+A single Linux machine (provided via Start Lab)
+Key terms:
+
+RoPA: Record of Processing Activities — a log of how personal data is used
+Data Subject: The person the data belongs to (e.g., customer, employee)
+Lawful Basis: The legal reason for processing data under GDPR (e.g., consent, contract)
+Special Category Data: Sensitive data like health, biometric, or religious data
+Environment Setup
+Your Al Nafi Linux machine is ready to use. We will use a lightweight CSV + command-line approach (no cloud dependencies, no complex installs) so you can focus on the compliance concepts.
+
+Open a terminal on your Linux machine.
+Create a working directory:
+# Create and move into a folder for this lab
+mkdir -p ~/gdpr-lab
+cd ~/gdpr-lab
+Confirm you have basic tools installed (Python 3 and a text editor):
+# Check Python version (used later to generate the report)
+python3 --version
+
+# Check that nano editor is available (or use vim/gedit if preferred)
+nano --version
+If Python 3 is missing, install it:
+
+sudo apt update
+sudo apt install -y python3 python3-pip
+Tasks
+Task 1: Create the Data Inventory CSV Template
+We will use a CSV file instead of installing OpenMetadata, to keep this beginner-friendly and lightweight.
+
+# Create the CSV file with header row
+nano data_inventory.csv
+Copy this header row and sample data into the file, then save (Ctrl+O, Enter, Ctrl+X):
+
+process_id,process_name,data_source,data_subject_category,personal_data_fields,sensitive_category,processing_purpose,lawful_basis,retention_period
+1,Employee Payroll,HR System,Employees,"Name, Bank Account, Salary",No,Salary payment,Contract,7 years
+2,Customer Support Tickets,Helpdesk App,Customers,"Name, Email, Complaint text",No,Issue resolution,Legitimate Interest,2 years
+3,Health Insurance Claims,Insurance Portal,Employees,"Name, Medical Condition",Yes-Health,Insurance claim processing,Consent,5 years
+Explanation of columns:
+
+sensitive_category: Marks "Yes-Health", "Yes-Biometric", or "No"
+lawful_basis: One of Consent, Contract, Legal Obligation, Vital Interest, Public Task, Legitimate Interest
+retention_period: How long data is kept before deletion
+Task 2: Enumerate Additional Data Sources
+Add three more rows representing a fictional organization's other systems (e.g., CRM, biometric access control, marketing platform).
+
+nano data_inventory.csv
+Example rows to add:
+
+4,Office Access Control,Biometric Scanner,Employees,"Fingerprint Template",Yes-Biometric,Building security,Legitimate Interest,1 year
+5,Marketing Newsletter,Email Platform,Customers,"Name, Email",No,Marketing communication,Consent,Until withdrawal
+TODO: Add one more row of your own for a "Website Cookies" process (data source: Website, data subject: Website Visitors)
+Task 3: Tag and Verify Sensitive Categories
+Use a simple command to check that all sensitive rows are correctly tagged.
+
+# Search for rows tagged as sensitive (Health or Biometric)
+grep -i "Yes-" data_inventory.csv
+Expected: You should see the Health Insurance and Biometric Scanner rows listed.
+
+Task 4: Validate Lawful Basis and Retention Fields
+Write a small Python script to check that no row is missing a lawful basis or retention period.
+
+Create the file:
+
+nano validate_ropa.py
+Use this starter template — complete the TODOs:
+
+import csv
+
+def validate_ropa(file_path: str) -> list:
+    """
+    Check the RoPA CSV file for missing lawful_basis or retention_period.
+
+    Args:
+        file_path: Path to the data_inventory.csv file
+
+    Returns:
+        List of process_ids that have missing required fields
+    """
+    missing_rows = []
+
+    # TODO 1: Open the CSV file using open() and csv.DictReader
+    # TODO 2: Loop through each row
+    # TODO 3: If lawful_basis or retention_period is empty, add process_id to missing_rows
+    # TODO 4: Return missing_rows
+
+    pass
+
+
+if __name__ == "__main__":
+    result = validate_ropa("data_inventory.csv")
+    if result:
+        print("Rows missing required fields:", result)
+    else:
+        print("All rows have lawful basis and retention period defined.")
+Run it:
+
+python3 validate_ropa.py
+Hint: Use csv.DictReader(f) to read rows as dictionaries, then check row["lawful_basis"].strip() == "".
+
+Task 5: Generate an Exportable RoPA Report
+Create a report generator script:
+
+nano generate_report.py
+Starter template:
+
+import csv
+from datetime import datetime
+
+def generate_ropa_report(input_file: str, output_file: str) -> None:
+    """
+    Read the data inventory CSV and generate a formatted RoPA report
+    (plain text file) for the DPO.
+
+    Args:
+        input_file: Path to data_inventory.csv
+        output_file: Path to save the report (e.g., ropa_report.txt)
+    """
+    # TODO 1: Open input_file and read rows with csv.DictReader
+    # TODO 2: Open output_file for writing
+    # TODO 3: Write a title line and generation date (use datetime.now())
+    # TODO 4: For each row, write process_name, data_subject_category,
+    #         sensitive_category, lawful_basis, and retention_period
+    # TODO 5: Close both files (or use 'with' blocks)
+
+    pass
+
+
+if __name__ == "__main__":
+    generate_ropa_report("data_inventory.csv", "ropa_report.txt")
+    print("Report generated: ropa_report.txt")
+Run the script:
+
+python3 generate_report.py
+View your report:
+
+cat ropa_report.txt
+Verification
+Confirm your lab is complete by running these checks on the same machine:
+
+# 1. Confirm the CSV has at least 6 data rows (plus header)
+wc -l data_inventory.csv
+
+# 2. Confirm sensitive categories are tagged
+grep -c "Yes-" data_inventory.csv
+
+# 3. Confirm validation script runs without errors
+python3 validate_ropa.py
+
+# 4. Confirm the report file exists and has content
+ls -la ropa_report.txt
+cat ropa_report.txt
+Expected outcomes:
+
+data_inventory.csv contains 6+ processing activities
+At least 2 rows tagged with a sensitive category
+validate_ropa.py reports no missing fields (after you complete the TODOs correctly)
+ropa_report.txt exists and lists all processing activities clearly
+Troubleshooting
+"python3: command not found" — Run sudo apt install -y python3
+CSV columns misaligned — Ensure fields with commas (e.g., "Name, Email") are wrapped in double quotes
+Script prints nothing — Check indentation; Python is sensitive to spacing
+grep finds nothing — Confirm your sensitive tags exactly match "Yes-Health" or "Yes-Biometric" (case matters unless using -i)
+Permission denied saving file — Ensure you are working inside ~/gdpr-lab, not a system folder
+Conclusion
+In this lab, you built a basic personal data inventory and Record of Processing Activities (RoPA) using a simple CSV file and Python scripts on a single Linux machine. You enumerated data sources, data subject categories, and processing purposes; tagged sensitive data such as health and biometric information; validated that each processing activity had a documented lawful basis and retention period; and generated an exportable text report suitable for a Data Protection Officer. These skills directly support GDPR Article 30 and GCC PDPL accountability requirements and form a foundational practice for roles such as Data Privacy Officer and Compliance Analyst, aligning with IAPP CIPP/E and CIPM certification knowledge areas.
