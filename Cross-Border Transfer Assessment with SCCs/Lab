@@ -1,0 +1,145 @@
+Cross-Border Transfer Assessment with SCCs
+Objectives
+By completing this lab, you will:
+
+Model a UAE-to-EU HR data transfer flow and classify data categories by sensitivity
+Apply GDPR Chapter V adequacy logic and determine applicable transfer mechanisms
+Populate an SCC Module (Controller-to-Processor) and a supplementary measures checklist
+Produce a Transfer Impact Assessment (TIA) in Markdown with a risk-based recommendation
+Evaluate technical mitigations (encryption-in-transit, tokenization, localization) against residual risk
+Prerequisites
+Working knowledge of GDPR Articles 44-49, EU SCCs (2021/914), and KSA PDPL cross-border provisions
+Familiarity with data flow diagramming and risk scoring methodologies
+Comfort with Git, Markdown, YAML/JSON, and CLI-based Linux tools
+No prior use of a specific transfer-assessment tool required — you will assemble the workflow yourself
+Environment Setup
+Single Linux machine (provided via Start Lab). Install lightweight open-source tooling:
+
+sudo apt update
+sudo apt install -y git jq python3-pip graphviz
+pip3 install pyyaml
+mkdir -p ~/tia-lab/{data,diagrams,assessment}
+cd ~/tia-lab
+git init
+Download reference dataset (sample HR fields) — create it yourself as instructed in Task 1.
+
+Tasks
+Task 1: Model the Data Flow (Dubai to Frankfurt)
+Design a data flow representing an HR system exporting employee records from a UAE entity (data exporter) to an EU-based payroll processor (data importer) in Frankfurt.
+
+Requirements:
+
+Create data/dataflow.yaml capturing: data categories (e.g., name, Emirates ID, salary, bank IBAN, performance reviews), data subjects, purpose, transfer frequency, storage locations, and sub-processors
+Classify each field by sensitivity tier (Public / Internal / Confidential / Special Category under GDPR Art. 9 or PDPL sensitive data)
+Generate a visual flow diagram using Graphviz (.dot → .png) showing: source system → transfer mechanism → destination system → any onward transfers
+# scripts/build_flow.py
+def load_dataflow(yaml_path: str) -> dict:
+    """
+    Load and validate the data flow definition.
+    Must check required keys: data_categories, subjects, purpose,
+    transfer_frequency, locations, sub_processors.
+    """
+    # TODO: implement
+    pass
+
+def classify_sensitivity(fields: list) -> dict:
+    """
+    Map each field to a sensitivity tier.
+    Return dict: {field_name: tier}
+    """
+    # TODO: implement
+    pass
+
+def render_diagram(flow: dict, output_path: str) -> None:
+    """
+    Generate a Graphviz .dot representation of the flow
+    and render to PNG using the `graphviz` CLI or Python bindings.
+    """
+    # TODO: implement
+    pass
+Deliverable: diagrams/dataflow.png + data/dataflow.yaml
+
+Task 2: Adequacy and Safeguard Determination
+Write a decision script that evaluates the transfer against GDPR Art. 45 (adequacy) and PDPL executive regulations.
+
+Requirements:
+
+UAE has no EU adequacy decision — determine the correct fallback mechanism (Art. 46 safeguards)
+Encode logic: if destination lacks adequacy → require SCCs + TIA; if special category data present → flag heightened scrutiny
+Cross-check KSA PDPL Article 29 requirements if any sub-processor is Saudi-based (add a hypothetical Riyadh sub-processor to test this branch)
+Output a structured decision report (JSON) listing: adequacy status, applicable mechanism, and triggered obligations
+# scripts/adequacy_check.py
+def check_gdpr_adequacy(destination_country: str) -> dict:
+    """
+    Return adequacy status per current EU Commission adequacy list.
+    Output: {"country": str, "adequate": bool, "basis": str}
+    """
+    # TODO: implement (hardcode current adequacy list as of assessment date)
+    pass
+
+def check_pdpl_transfer_rules(destination_country: str, data_tiers: dict) -> dict:
+    """
+    Apply KSA PDPL cross-border transfer conditions
+    (necessity test, risk assessment, SDAIA approval triggers).
+    """
+    # TODO: implement
+    pass
+
+def determine_mechanism(gdpr_result: dict, pdpl_result: dict) -> str:
+    """
+    Decide: 'SCC Required', 'BCR Required', 'Derogation Only', or 'Blocked'
+    """
+    # TODO: implement
+    pass
+Deliverable: assessment/adequacy_report.json
+
+Task 3: SCC Module Completion and Supplementary Measures
+Manually complete (do not auto-generate legal text) the following in assessment/:
+
+scc_module2.md — Controller-to-Processor SCC Module 2 clauses populated with: parties, purpose, data categories, sub-processor authorization (general vs. specific), audit rights, liability terms
+supplementary_measures_checklist.md — Assess per EDPB Recommendations 01/2020: encryption at rest/in transit, key management jurisdiction, government access risk in UAE, split-key/BYOK feasibility, contractual audit clauses, organizational measures (access logging, data minimization)
+Use this checklist skeleton and complete each row with your own risk rating (Low/Medium/High) and justification:
+
+| Measure Category | Applied? | Residual Risk | Justification |
+|---|---|---|---|
+| Encryption in transit (TLS 1.3) | | | |
+| Encryption at rest (customer-managed keys) | | | |
+| Pseudonymization before transfer | | | |
+| Access logging & monitoring | | | |
+| Government access assessment (UAE) | | | |
+| Onward transfer restrictions | | | |
+Task 4: Draft the Transfer Impact Assessment (TIA)
+Produce assessment/TIA_report.md synthesizing Tasks 1-3. Required sections:
+
+Executive Summary
+Transfer Description (reference diagram)
+Legal Basis & Mechanism Selected
+Law Enforcement/Government Access Risk Analysis (UAE surveillance laws vs. EDPB baseline)
+Supplementary Measures Applied
+Residual Risk Rating (overall)
+Recommendation (proceed / proceed with conditions / do not transfer)
+This is a written analytical deliverable — no code scaffold provided. Apply the EDPB six-step TIA methodology explicitly and cite which step produced each conclusion.
+
+Task 5: Technical Mitigation Recommendation
+Based on residual risk from Task 4, design one mitigation and justify the trade-off:
+
+Option A — Data Localization: Keep HR special-category fields in a UAE-region data store; transfer only pseudonymized/aggregated payroll totals to Frankfurt
+Option B — Encryption-in-Transit + Client-Side Encryption: Implement field-level encryption before transfer, with keys held exclusively by the UAE entity
+Deliverable: assessment/mitigation_recommendation.md — one page comparing latency, compliance cost, and residual risk reduction for both options, with a final recommendation.
+
+Verification
+Confirm lab completion on the same machine:
+
+cd ~/tia-lab
+ls diagrams/dataflow.png assessment/*.json assessment/*.md
+jq '.' assessment/adequacy_report.json   # validate JSON structure
+grep -c "|" assessment/supplementary_measures_checklist.md  # confirm table populated
+wc -l assessment/TIA_report.md  # should exceed 40 lines for adequate depth
+Self-check criteria:
+
+Diagram shows all sub-processors including the Riyadh test case
+Adequacy report correctly flags UAE as non-adequate under GDPR
+TIA explicitly references EDPB six-step methodology by step number
+Mitigation recommendation includes a quantified or qualified trade-off table
+Conclusion
+In this lab, you constructed an end-to-end cross-border transfer assessment spanning UAE, EU, and KSA jurisdictions. You modeled a realistic HR data flow, coded adequacy and PDPL decision logic, completed SCC Module 2 documentation with EDPB-aligned supplementary measures, authored a full Transfer Impact Assessment using the six-step methodology, and evaluated localization versus encryption-based mitigations against compliance and performance trade-offs. These skills map directly to the Privacy Counsel and Compliance Manager roles and reinforce CIPP/E competencies in international data transfer mechanisms.
