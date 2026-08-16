@@ -1,0 +1,230 @@
+Building a Right to Erasure Workflow in PostgreSQL
+Objectives
+By the end of this lab, you will be able to:
+
+Design a multi-table PostgreSQL schema representing user data across a system
+Build a Python service that traces all records tied to a data subject
+Implement a soft-delete then hard-delete pattern with audit logging
+Simulate backup anonymization to satisfy GDPR Article 17 across all data copies
+Generate an erasure confirmation certificate
+Prerequisites
+Basic SQL (JOINs, foreign keys, transactions)
+Basic Python (functions, classes, psycopg2 or similar)
+Familiarity with GDPR Article 17 concepts (right to erasure)
+Comfort with Linux terminal
+Environment Setup
+Your Al Nafi Linux machine comes ready via Start Lab. Install required packages:
+
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib python3-pip
+pip3 install psycopg2-binary faker
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+Create a working database and user:
+
+sudo -u postgres psql -c "CREATE DATABASE erasure_lab;"
+sudo -u postgres psql -c "CREATE USER lab_user WITH PASSWORD 'labpass123';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE erasure_lab TO lab_user;"
+Task 1: Create a Multi-Table User Dataset
+Connect to the database:
+
+psql -h localhost -U lab_user -d erasure_lab
+Create the schema (run inside psql):
+
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    full_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    deleted_at TIMESTAMP
+);
+
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(user_id),
+    amount NUMERIC(10,2),
+    order_date TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE support_tickets (
+    ticket_id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(user_id),
+    message TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE audit_log (
+    audit_id SERIAL PRIMARY KEY,
+    user_id INT,
+    action VARCHAR(50),
+    table_name VARCHAR(50),
+    performed_at TIMESTAMP DEFAULT NOW(),
+    details JSONB
+);
+
+-- Simulated backup table (represents an offline/cold backup store)
+CREATE TABLE users_backup (LIKE users INCLUDING ALL);
+Insert sample data:
+
+INSERT INTO users (email, full_name) VALUES
+('alice@example.com', 'Alice Khan'),
+('bob@example.com', 'Bob Ahmed');
+
+INSERT INTO orders (user_id, amount) VALUES (1, 250.00), (1, 99.50), (2, 40.00);
+INSERT INTO support_tickets (user_id, message) VALUES (1, 'Refund request'), (2, 'Login issue');
+
+-- Populate the backup snapshot
+INSERT INTO users_backup SELECT * FROM users;
+Exit psql with \q.
+
+Checkpoint: Run SELECT COUNT(*) FROM users; — expect 2 rows.
+
+Task 2: Build a Python Service to Locate Related Records
+Create erasure_service.py. Complete the TODOs.
+
+import psycopg2
+from datetime import datetime
+
+DB_CONFIG = {
+    "host": "localhost",
+    "dbname": "erasure_lab",
+    "user": "lab_user",
+    "password": "labpass123"
+}
+
+# Tables containing personal data linked via user_id
+RELATED_TABLES = ["orders", "support_tickets"]
+
+def get_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
+def find_user_records(email: str) -> dict:
+    """
+    Locate the user and all related records across tables.
+
+    Args:
+        email: Email address of the data subject
+
+    Returns:
+        Dictionary with user_id and counts of related records per table
+    """
+    # TODO: Connect to DB, fetch user_id from users table by email
+    # TODO: For each table in RELATED_TABLES, count matching rows by user_id
+    # TODO: Return {"user_id": ..., "records": {"orders": n, "support_tickets": n}}
+    pass
+
+if __name__ == "__main__":
+    result = find_user_records("alice@example.com")
+    print(result)
+Hint: Use parameterized queries (%s) to avoid SQL injection. Handle the case where the email is not found (return None).
+
+Task 3: Soft-Delete then Hard-Delete with Audit Trail
+Extend erasure_service.py with the following functions:
+
+def soft_delete_user(user_id: int):
+    """
+    Mark the user as deleted without removing data (grace period step).
+    Must log this action into audit_log.
+    """
+    # TODO: UPDATE users SET is_deleted=TRUE, deleted_at=NOW() WHERE user_id=%s
+    # TODO: INSERT a row into audit_log with action='SOFT_DELETE'
+    # TODO: Commit transaction
+    pass
+
+def hard_delete_user(user_id: int):
+    """
+    Permanently remove user and related records.
+    Must log each deletion step into audit_log before committing.
+    """
+    # TODO: For each related table, DELETE rows WHERE user_id=%s
+    #       and INSERT an audit_log entry per table (action='HARD_DELETE')
+    # TODO: DELETE the user row from users
+    # TODO: INSERT final audit_log entry for the users table
+    # TODO: Use a single transaction; ROLLBACK on error
+    pass
+Design requirement: Wrap all deletes in one transaction. If any step fails, roll back everything so the audit trail stays consistent.
+
+Test your implementation:
+
+if __name__ == "__main__":
+    info = find_user_records("alice@example.com")
+    print("Before deletion:", info)
+    soft_delete_user(info["user_id"])
+    hard_delete_user(info["user_id"])
+Checkpoint: Query SELECT * FROM audit_log; — you should see multiple rows documenting each deletion step.
+
+Task 4: Verify Erasure in Backups Using Anonymization
+Backups often cannot be deleted immediately (e.g., compliance retention). Instead, anonymize matching records.
+
+def anonymize_backup(user_id: int, original_email: str):
+    """
+    Anonymize the user's record in the backup table instead of deleting it.
+    Replace PII fields with irreversible placeholders.
+
+    Args:
+        user_id: ID of the erased user
+        original_email: Original email, used to locate the backup row
+    """
+    # TODO: UPDATE users_backup SET email = CONCAT('anon_', user_id, '@erased.local'),
+    #       full_name = 'REDACTED' WHERE user_id = %s
+    # TODO: Log this action into audit_log with action='ANONYMIZE_BACKUP'
+    pass
+
+def verify_backup_anonymized(user_id: int) -> bool:
+    """
+    Confirm no identifiable PII remains for this user in backup storage.
+    """
+    # TODO: SELECT email, full_name FROM users_backup WHERE user_id=%s
+    # TODO: Return True if email starts with 'anon_' and name == 'REDACTED'
+    pass
+Checkpoint: Run verify_backup_anonymized(1) — should return True.
+
+Task 5: Produce an Erasure Confirmation Certificate
+def generate_certificate(user_id: int, email: str) -> str:
+    """
+    Generate a text certificate confirming completion of the erasure workflow.
+    Should include timestamp, user reference (hashed, not raw email),
+    and a summary of actions taken (from audit_log).
+
+    Returns:
+        Path to the generated certificate file
+    """
+    # TODO: Hash the email (e.g., hashlib.sha256) instead of storing it in plaintext
+    # TODO: Query audit_log for all rows matching user_id
+    # TODO: Write a .txt file "certificate_<user_id>.txt" with:
+    #       - Certificate title
+    #       - Hashed subject reference
+    #       - List of actions and timestamps
+    #       - GDPR Article 17 compliance statement
+    # TODO: Return the file path
+    pass
+Run the full workflow end-to-end:
+
+if __name__ == "__main__":
+    info = find_user_records("bob@example.com")
+    soft_delete_user(info["user_id"])
+    hard_delete_user(info["user_id"])
+    anonymize_backup(info["user_id"], "bob@example.com")
+    cert_path = generate_certificate(info["user_id"], "bob@example.com")
+    print(f"Certificate created: {cert_path}")
+Verification
+Confirm the workflow is complete:
+
+psql -h localhost -U lab_user -d erasure_lab -c "SELECT * FROM users WHERE email='bob@example.com';"
+# Expect: 0 rows
+
+psql -h localhost -U lab_user -d erasure_lab -c "SELECT * FROM orders WHERE user_id=2;"
+# Expect: 0 rows
+
+psql -h localhost -U lab_user -d erasure_lab -c "SELECT email, full_name FROM users_backup WHERE user_id=2;"
+# Expect: anonymized values, e.g., anon_2@erased.local / REDACTED
+
+cat certificate_2.txt
+# Expect: readable certificate with hashed reference and audit summary
+Troubleshooting
+Foreign key violation on delete: Ensure you delete from orders/support_tickets before deleting from users.
+Connection refused: Check sudo systemctl status postgresql and confirm pg_hba.conf allows local password auth.
+Transaction left open: Always call conn.commit() on success and conn.rollback() in an except block.
+Conclusion
+In this lab, you built a functional right-to-erasure workflow in PostgreSQL that mirrors real-world GDPR Article 17 obligations. You designed a multi-table dataset, wrote a Python service to trace personal data across tables, implemented a two-stage soft-delete/hard-delete process with a full audit trail, anonymized backup copies of user data, and produced a data-subject-facing erasure certificate. These skills directly support Backend Engineer and Privacy Engineer roles and align with IAPP CIPT competencies in privacy-by-design implementation.
