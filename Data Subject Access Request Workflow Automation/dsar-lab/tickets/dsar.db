@@ -1,0 +1,9 @@
+CREATE TABLE requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject_email TEXT NOT NULL,
+  request_type TEXT NOT NULL,
+  status TEXT DEFAULT 'received',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  sla_deadline TIMESTAMP,
+  verified INTEGER DEFAULT 0
+);
