@@ -1,0 +1,2 @@
+CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, email TEXT, address TEXT, signup_date TEXT);
+INSERT INTO customers VALUES (1, 'Ahmed Ali', 'ahmed@example.com', 'Dubai, UAE', '2022-01-15');
