@@ -1,0 +1,216 @@
+Pseudonymization and Tokenization of Identifiers
+Objectives
+By the end of this lab, you will be able to:
+
+Load and manage sensitive identifier data (Emirates IDs) in PostgreSQL
+Implement format-preserving tokenization using Python
+Separate token vaults from operational data with restrictive file/database permissions
+Perform controlled reidentification through an authorized access path
+Document residual risk and key management controls aligned with GDPR Art. 32 and GCC PDPL
+Prerequisites
+Basic SQL (INSERT, SELECT, GRANT/REVOKE)
+Basic Python (functions, dictionaries, file I/O)
+Familiarity with Linux file permissions (chmod, chown)
+Understanding of pseudonymization vs. anonymization concepts
+Environment Setup
+Your Al Nafi Linux machine comes with a terminal. Install required packages:
+
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib python3-pip
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+pip3 install psycopg2-binary cryptography
+Create a database and working user:
+
+sudo -u postgres psql -c "CREATE DATABASE privacy_lab;"
+sudo -u postgres psql -c "CREATE USER lab_app WITH PASSWORD 'LabPass123';"
+sudo -u postgres psql -d privacy_lab -c "GRANT CONNECT ON DATABASE privacy_lab TO lab_app;"
+Task 1: Load Sample Dataset with Emirates IDs
+Emirates ID format: 784-YYYY-NNNNNNN-C (15 digits total).
+
+Create the schema and load sample data:
+
+sudo -u postgres psql -d privacy_lab
+CREATE SCHEMA raw_data;
+
+CREATE TABLE raw_data.customers (
+    customer_id SERIAL PRIMARY KEY,
+    full_name VARCHAR(100),
+    emirates_id VARCHAR(20) NOT NULL,
+    phone VARCHAR(15)
+);
+
+INSERT INTO raw_data.customers (full_name, emirates_id, phone) VALUES
+('Ahmed Al Mansoori', '784-1990-1234567-1', '0501234567'),
+('Fatima Al Suwaidi', '784-1985-7654321-2', '0559876543'),
+('Sara Khan', '784-1992-1112223-4', '0521112233');
+
+GRANT USAGE ON SCHEMA raw_data TO lab_app;
+GRANT SELECT ON raw_data.customers TO lab_app;
+\q
+Checkpoint: Confirm 3 rows exist: SELECT count(*) FROM raw_data.customers;
+
+Task 2: Implement Format-Preserving Tokenization
+Format-preserving tokenization replaces the digits of the Emirates ID with a deterministic pseudonymous value of the same length/pattern, while the mapping is stored separately.
+
+Create tokenize.py:
+
+import psycopg2
+import hmac
+import hashlib
+import os
+import json
+
+SECRET_KEY = os.urandom(32)  # TODO: In production, load from a secure key store, not memory
+
+def format_preserving_token(emirates_id: str, key: bytes) -> str:
+    """
+    Generate a format-preserving token for an Emirates ID.
+    Keeps the '784-YYYY-' prefix structure but replaces the
+    last 7 digits + check digit with a deterministic pseudonymous number.
+
+    Args:
+        emirates_id: Original ID, e.g. '784-1990-1234567-1'
+        key: Secret key for HMAC generation
+
+    Returns:
+        Tokenized ID string in the same format
+    """
+    # TODO: Split emirates_id into prefix (784-YYYY-) and suffix (NNNNNNN-C)
+    # TODO: Compute HMAC-SHA256 of the suffix using `key`
+    # TODO: Convert HMAC digest into an 8-digit numeric string (mod 10**8)
+    # TODO: Reconstruct token in format: 784-YYYY-<7digits>-<1digit>
+    pass
+
+
+def build_token_vault(records: list) -> dict:
+    """
+    Build a mapping of token -> original emirates_id (the vault).
+
+    Args:
+        records: list of tuples (customer_id, emirates_id)
+
+    Returns:
+        Dictionary {token: {"customer_id": id, "original_id": emirates_id}}
+    """
+    # TODO: Loop through records, call format_preserving_token()
+    # TODO: Populate and return the vault dictionary
+    pass
+
+
+def fetch_customers(conn) -> list:
+    """Fetch customer_id and emirates_id from raw_data.customers."""
+    # TODO: Execute SELECT customer_id, emirates_id FROM raw_data.customers
+    # TODO: Return list of tuples
+    pass
+
+
+if __name__ == "__main__":
+    conn = psycopg2.connect(dbname="privacy_lab", user="lab_app",
+                             password="LabPass123", host="localhost")
+
+    # TODO: Call fetch_customers(conn)
+    # TODO: Call build_token_vault() on the fetched records
+    # TODO: Save vault to 'vault.json' (this file must later get restrictive permissions)
+    # TODO: Save key to 'vault.key' (binary write)
+
+    conn.close()
+Run and verify:
+
+python3 tokenize.py
+cat vault.json
+Hint: Use emirates_id.split('-') and hmac.new(key, suffix.encode(), hashlib.sha256).hexdigest(). Convert hex to int with int(digest, 16) % 10**8.
+
+Task 3: Store Token Vault with Restrictive Permissions
+The vault (mapping + key) must be isolated from the pseudonymized dataset.
+
+mkdir -p ~/secure_vault
+mv vault.json vault.key ~/secure_vault/
+chmod 700 ~/secure_vault
+chmod 600 ~/secure_vault/vault.json ~/secure_vault/vault.key
+ls -la ~/secure_vault
+Create a separate PostgreSQL table to store only tokens (no vault access):
+
+sudo -u postgres psql -d privacy_lab
+CREATE SCHEMA pseudonymized;
+
+CREATE TABLE pseudonymized.customers (
+    customer_id INT PRIMARY KEY,
+    full_name VARCHAR(100),
+    emirates_id_token VARCHAR(20),
+    phone VARCHAR(15)
+);
+
+-- TODO: Restrict access so only a dedicated 'reidentify_role' can join tokens back to the vault
+CREATE ROLE reidentify_role LOGIN PASSWORD 'ReidPass123';
+GRANT SELECT ON pseudonymized.customers TO lab_app;
+-- Do NOT grant reidentify_role access to raw_data schema
+\q
+Load your tokenized records into pseudonymized.customers using a Python insert loop (extend tokenize.py or write a new script load_tokens.py) — insert customer_id, full_name, the generated token, and phone.
+
+Checkpoint: SELECT * FROM pseudonymized.customers; should show tokens, not real Emirates IDs.
+
+Task 4: Reidentify a Record via Authorized Access
+Create reidentify.py — this script represents the only authorized path back to real identifiers.
+
+import json
+
+VAULT_PATH = "/home/<your_user>/secure_vault/vault.json"  # TODO: update path
+
+def reidentify_token(token: str, vault_path: str) -> dict:
+    """
+    Look up the original Emirates ID for a given token.
+    Simulates an authorized privileged-access workflow.
+
+    Args:
+        token: The pseudonymized identifier
+        vault_path: Path to the restricted vault file
+
+    Returns:
+        Dict with original_id and customer_id, or an error message
+    """
+    # TODO: Open and load the vault JSON file
+    # TODO: Search for matching token key
+    # TODO: Return the associated record, or {"error": "Token not found"}
+    pass
+
+
+if __name__ == "__main__":
+    test_token = input("Enter token to reidentify: ")
+    result = reidentify_token(test_token, VAULT_PATH)
+    print(result)
+Test with a token from pseudonymized.customers:
+
+python3 reidentify.py
+Access control test: Try reading vault.json as a non-owner user (or via sudo -u lab_app cat ~/secure_vault/vault.json) — it should fail with permission denied, proving separation of duties.
+
+Task 5: Document Residual Risk and Key Management Controls
+Create risk_documentation.md and answer the following (2-3 sentences each):
+
+Residual Re-identification Risk — Even with tokenization, what residual risk remains (e.g., vault compromise, HMAC key leakage, small keyspace attacks on 8-digit tokens)?
+Key Management — Where should vault.key actually be stored in production (e.g., HSM, KMS, HashiCorp Vault) instead of a local file?
+Access Control Mapping — Which role(s) should be permitted to run reidentify.py, and how does this map to GDPR Art. 32 (security of processing) and GCC PDPL data minimization principles?
+Separation of Duties — Explain why raw_data, pseudonymized, and the vault are kept in different schemas/locations.
+Verification
+Confirm lab completion with these checks:
+
+# 1. Raw data exists
+sudo -u postgres psql -d privacy_lab -c "SELECT count(*) FROM raw_data.customers;"
+
+# 2. Tokens generated and stored separately
+sudo -u postgres psql -d privacy_lab -c "SELECT emirates_id_token FROM pseudonymized.customers;"
+
+# 3. Vault permissions are restrictive
+stat -c "%a %n" ~/secure_vault/vault.json   # expect 600
+
+# 4. Reidentification script works
+python3 reidentify.py
+
+# 5. Documentation exists
+cat risk_documentation.md
+Troubleshooting
+psycopg2 connection refused: Check pg_hba.conf allows md5/scram-sha-256 for local connections; restart PostgreSQL.
+Permission denied on vault: Confirm you're testing as a different OS user than the file owner.
+Token length mismatch: Ensure your modulo operation always zero-pads to 8 digits (str(num).zfill(8)).
+Conclusion
+In this lab, you built an end-to-end pseudonymization workflow: loading sensitive Emirates ID data into PostgreSQL, implementing format-preserving tokenization in Python, and physically/logically separating the token vault using Linux file permissions and database schema isolation. You then simulated an authorized reidentification path and documented residual risks and key management controls. These practices directly support GDPR Article 32 security safeguards and GCC PDPL data minimization requirements, giving you practical experience relevant to Privacy Engineer and Data Engineer roles and the IAPP CIPT body of knowledge.
