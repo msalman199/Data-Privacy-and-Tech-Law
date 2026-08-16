@@ -1,0 +1,6 @@
+process_id,process_name,data_source,data_subject_category,personal_data_fields,sensitive_category,processing_purpose,lawful_basis,retention_period
+1,Employee Payroll,HR System,Employees,"Name, Bank Account, Salary",No,Salary payment,Contract,7 years
+2,Customer Support Tickets,Helpdesk App,Customers,"Name, Email, Complaint text",No,Issue resolution,Legitimate Interest,2 years
+3,Health Insurance Claims,Insurance Portal,Employees,"Name, Medical Condition",Yes-Health,Insurance claim processing,Consent,5 years
+4,Office Access Control,Biometric Scanner,Employees,"Fingerprint Template",Yes-Biometric,Building security,Legitimate Interest,1 year
+5,Marketing Newsletter,Email Platform,Customers,"Name, Email",No,Marketing communication,Consent,Until withdrawal
