@@ -1,0 +1,165 @@
+Configuring Role-Based Access for Need-to-Know
+Objectives
+By the end of this lab, you will be able to:
+
+Create PostgreSQL roles representing HR, finance, and audit functions
+Implement column-level and row-level security to enforce need-to-know
+Enable pgAudit to log access attempts and privilege usage
+Validate segregation of duties by impersonating each role
+Map the resulting access model to PDPL (Personal Data Protection Law) data-sharing requirements
+Prerequisites
+Basic SQL knowledge (SELECT, GRANT, CREATE ROLE)
+Familiarity with Linux command line and package managers
+Understanding of RBAC concepts (roles vs users, least privilege)
+No prior pgAudit experience required
+Environment Setup
+Your Al Nafi Linux machine comes with terminal access. Install PostgreSQL and pgAudit:
+
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+sudo apt install -y postgresql-15-pgaudit   # adjust version if different
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+Verify installation:
+
+psql --version
+sudo -u postgres psql -c "SELECT version();"
+Create a working database:
+
+sudo -u postgres createdb agency_records
+Tasks
+Task 1: Create Roles for HR, Finance, and Audit
+Switch to the postgres user and connect:
+
+sudo -u postgres psql -d agency_records
+Create three roles with login capability and distinct passwords:
+
+-- TODO: Create hr_role, finance_role, audit_role using CREATE ROLE ... LOGIN PASSWORD
+-- Example structure:
+CREATE ROLE hr_role LOGIN PASSWORD 'ChangeMe_HR1';
+-- Repeat for finance_role and audit_role
+Create a sample table representing shared employee records:
+
+CREATE TABLE employee_records (
+    emp_id SERIAL PRIMARY KEY,
+    full_name TEXT,
+    department TEXT,
+    salary NUMERIC,
+    ssn TEXT,          -- sensitive: HR only
+    audit_flag BOOLEAN DEFAULT false
+);
+
+INSERT INTO employee_records (full_name, department, salary, ssn)
+VALUES
+('Ali Hassan', 'HR', 5000, '123-45-6789'),
+('Sara Ahmed', 'Finance', 6000, '987-65-4321'),
+('Omar Khalid', 'IT', 5500, '555-55-5555');
+Task 2: Apply Column-Level and Row-Level Security
+Column-level security: Revoke default access, then grant selectively.
+
+REVOKE ALL ON employee_records FROM PUBLIC;
+
+-- TODO: Grant hr_role SELECT on all columns
+-- TODO: Grant finance_role SELECT only on (emp_id, full_name, department, salary)
+-- TODO: Grant audit_role SELECT only on (emp_id, department, audit_flag)
+
+GRANT SELECT (emp_id, full_name, department, salary) ON employee_records TO finance_role;
+Row-level security (RLS): Restrict finance to only their department's rows.
+
+ALTER TABLE employee_records ENABLE ROW LEVEL SECURITY;
+
+-- TODO: Create a policy named finance_dept_policy
+-- Requirement: finance_role can only see rows WHERE department = 'Finance'
+CREATE POLICY finance_dept_policy ON employee_records
+    FOR SELECT
+    TO finance_role
+    USING (department = 'Finance');
+
+-- TODO: Create a similar policy for hr_role allowing full row visibility
+-- TODO: Create a policy for audit_role limited to audit_flag = true rows
+Verify policies exist:
+
+SELECT * FROM pg_policies WHERE tablename = 'employee_records';
+Task 3: Enable pgAudit Logging
+Edit PostgreSQL configuration:
+
+sudo find / -name "postgresql.conf" 2>/dev/null
+sudo nano /etc/postgresql/15/main/postgresql.conf
+Add or update these lines:
+
+shared_preload_libraries = 'pgaudit'
+pgaudit.log = 'read, write, role'
+pgaudit.log_relation = on
+Restart PostgreSQL:
+
+sudo systemctl restart postgresql
+Enable the extension in your database:
+
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+Locate the log file:
+
+sudo find /var/log/postgresql/ -name "*.log"
+sudo tail -f /var/log/postgresql/postgresql-15-main.log
+Task 4: Test Segregation by Impersonating Roles
+Open a new terminal session and connect as each role to confirm access boundaries:
+
+psql -U finance_role -d agency_records -h localhost
+Run these queries and record the results:
+
+-- Should succeed (allowed columns, own department only)
+SELECT emp_id, full_name, department, salary FROM employee_records;
+
+-- Should fail (ssn column not granted)
+SELECT ssn FROM employee_records;
+
+-- Should return zero rows (RLS blocks other departments)
+SELECT * FROM employee_records WHERE department = 'HR';
+Repeat with audit_role and hr_role. Document each result (success/denied) in a table:
+
+Role	Query Type	Expected Result	Actual Result
+finance_role	SELECT ssn	Denied	
+audit_role	SELECT salary	Denied	
+hr_role	SELECT *	Allowed (all rows)	
+Check the pgAudit log to confirm denied attempts were recorded:
+
+sudo grep "audit_role\|finance_role" /var/log/postgresql/postgresql-15-main.log
+Task 5: Document the Access Model Against PDPL
+Create a markdown file summarizing your design:
+
+nano access_model_pdpl.md
+Include these sections (fill in based on your implementation):
+
+# Access Model Documentation
+
+## Roles and Justification
+- hr_role: [justify need-to-know scope]
+- finance_role: [justify need-to-know scope]
+- audit_role: [justify need-to-know scope]
+
+## Controls Implemented
+- Column-level restrictions: [list]
+- Row-level policies: [list]
+- Audit logging: [pgaudit settings used]
+
+## PDPL Alignment
+- Data minimization: how column/row restrictions support this principle
+- Purpose limitation: how role scope maps to job function
+- Accountability: how pgAudit logs support demonstrating compliance
+- Cross-agency sharing risk: explain how RBAC prevents unauthorized inter-agency data exposure
+Verification
+Confirm your lab is complete by checking:
+
+Three roles exist:
+SELECT rolname FROM pg_roles WHERE rolname IN ('hr_role','finance_role','audit_role');
+RLS is enabled and policies are active:
+SELECT relrowsecurity FROM pg_class WHERE relname = 'employee_records';
+pgAudit extension is loaded:
+SELECT * FROM pg_extension WHERE extname = 'pgaudit';
+Log file contains entries referencing role-based queries.
+access_model_pdpl.md file exists and is completed.
+Troubleshooting
+pgAudit fails to load: confirm shared_preload_libraries matches installed version path; restart service after any config change.
+Role login fails: check pg_hba.conf allows password authentication for local connections (md5 or scram-sha-256).
+RLS not restricting rows: confirm ENABLE ROW LEVEL SECURITY was run and no BYPASSRLS privilege was granted to the role.
+Conclusion
+In this lab, you implemented a need-to-know access model on a PostgreSQL database by creating distinct roles for HR, finance, and audit functions. You applied column-level and row-level security to restrict data visibility according to job function, enabled pgAudit to capture access attempts for accountability, and validated segregation of duties by impersonating each role. Finally, you documented how these technical controls align with PDPL principles of data minimization, purpose limitation, and accountability. These skills are directly applicable to database administration and security engineering roles responsible for enforcing least privilege in regulated, multi-agency data environments.
