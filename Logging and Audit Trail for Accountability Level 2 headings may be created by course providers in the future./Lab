@@ -1,0 +1,137 @@
+Logging and Audit Trail for Accountability
+Objectives
+By the end of this lab, you will be able to:
+
+Configure auditd and rsyslog to capture system and database access events on Linux
+Forward logs to a local Loki instance for centralized storage
+Generate hourly cryptographic hashes of log files as tamper-evidence
+Visualize access events in a Grafana dashboard
+Compile an evidence pack suitable for an external compliance audit (GDPR Art. 5(2), GCC PDPL)
+Prerequisites
+Basic Linux command-line skills (systemctl, file permissions, cron)
+Familiarity with SQL databases (any RDBMS)
+Basic understanding of GDPR/PDPL accountability principles
+Single Linux machine (Ubuntu 22.04 recommended) via Al Nafi Start Lab, with sudo access
+Environment Setup
+Your Al Nafi lab provides one Linux VM. Install required packages:
+
+sudo apt update
+sudo apt install -y auditd audispd-plugins rsyslog sqlite3 curl unzip gnupg
+Install Loki and Grafana (open-source, local binaries — no cloud account needed):
+
+# Loki
+curl -O -L "https://github.com/grafana/loki/releases/latest/download/loki-linux-amd64.zip"
+unzip loki-linux-amd64.zip && sudo mv loki-linux-amd64 /usr/local/bin/loki
+chmod +x /usr/local/bin/loki
+
+# Promtail (log shipper)
+curl -O -L "https://github.com/grafana/loki/releases/latest/download/promtail-linux-amd64.zip"
+unzip promtail-linux-amd64.zip && sudo mv promtail-linux-amd64 /usr/local/bin/promtail
+chmod +x /usr/local/bin/promtail
+
+# Grafana (APT repo)
+sudo apt install -y software-properties-common
+wget -q -O - https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/grafana.gpg
+echo "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo apt update && sudo apt install -y grafana
+Task 1: Configure auditd and rsyslog
+Add audit rules to watch a sample "database" file representing personal data storage:
+sudo mkdir -p /var/lib/appdata
+echo "id,name,email" | sudo tee /var/lib/appdata/customers.csv
+sudo auditctl -w /var/lib/appdata/customers.csv -p rwa -k pdpl_access
+Persist the rule in /etc/audit/rules.d/audit.rules, then restart:
+echo "-w /var/lib/appdata/customers.csv -p rwa -k pdpl_access" | sudo tee -a /etc/audit/rules.d/audit.rules
+sudo systemctl restart auditd
+Configure rsyslog to capture SQLite/app access logs. Create /var/log/db_access.log and simulate an access event script:
+# TODO: Complete this script to log a simulated DB read event
+# File: /usr/local/bin/simulate_access.sh
+#!/bin/bash
+# TODO: Append a timestamped line to /var/log/db_access.log
+# Format: <ISO8601-timestamp> USER=<username> ACTION=<SELECT|INSERT> TABLE=customers
+Run it a few times, then confirm audit events with:
+
+sudo ausearch -k pdpl_access | tail -20
+Task 2: Forward Logs to Loki
+Create a minimal Loki config loki-config.yaml (use Loki docs for full schema reference).
+Start Loki:
+loki -config.file=loki-config.yaml &
+Create promtail-config.yaml to scrape /var/log/db_access.log and /var/log/audit/audit.log. Complete the missing scrape target:
+scrape_configs:
+  - job_name: db_access
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: db_access
+          __path__: /var/log/db_access.log
+  - job_name: audit_log
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: audit_log
+          # TODO: set __path__ to the correct audit log location
+Launch Promtail:
+promtail -config.file=promtail-config.yaml &
+Verify Loki is receiving data:
+curl -G -s "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="db_access"}' | head -c 300
+Task 3: Hourly Log Hashing for Tamper Evidence
+Write a script that hashes the log files and appends the digest to a tamper-evidence ledger.
+
+#!/bin/bash
+# File: /usr/local/bin/hash_logs.sh
+LOGS=("/var/log/db_access.log" "/var/log/audit/audit.log")
+LEDGER="/var/log/audit_hash_ledger.log"
+
+for f in "${LOGS[@]}"; do
+  # TODO: compute sha256sum of $f
+  # TODO: append "<timestamp> <filename> <hash>" to $LEDGER
+  :
+done
+Make it executable: chmod +x /usr/local/bin/hash_logs.sh
+Schedule hourly via cron:
+(crontab -l 2>/dev/null; echo "0 * * * * /usr/local/bin/hash_logs.sh") | crontab -
+Test manually and inspect the ledger:
+/usr/local/bin/hash_logs.sh
+cat /var/log/audit_hash_ledger.log
+Tamper check: Modify db_access.log, rerun the hash script, and compare consecutive hashes to confirm the change is detectable.
+
+Task 4: Build a Grafana Dashboard
+Start Grafana and log in at http://<vm-ip>:3000 (default admin/admin):
+sudo systemctl start grafana-server
+sudo systemctl enable grafana-server
+Add Loki as a data source: Configuration > Data Sources > Add data source > Loki, URL: http://localhost:3100
+
+Create a new dashboard with a Logs panel using query:
+
+{job="db_access"}
+Add a second panel — a time-series count of audit events:
+# TODO: write a LogQL query counting pdpl_access events per 5-minute interval
+Save the dashboard as PDPL Accountability Dashboard.
+Task 5: Produce an Evidence Pack
+Create a folder and compile audit artifacts:
+
+mkdir -p ~/evidence_pack
+cp /var/log/audit_hash_ledger.log ~/evidence_pack/
+sudo ausearch -k pdpl_access > ~/evidence_pack/audit_events.txt
+cp /var/log/db_access.log ~/evidence_pack/
+Write a short README.md in ~/evidence_pack/ summarizing:
+
+Scope of monitored data (customers.csv)
+Logging/hashing mechanism used
+How to verify log integrity (re-hash and compare)
+Mapping to GDPR Art. 5(2) / PDPL accountability requirement
+Package it:
+
+tar -czvf evidence_pack_$(date +%F).tar.gz -C ~ evidence_pack
+sha256sum evidence_pack_$(date +%F).tar.gz > evidence_pack_checksum.txt
+Verification
+sudo auditctl -l shows the pdpl_access watch rule
+curl query to Loki returns log entries for db_access and audit_log jobs
+/var/log/audit_hash_ledger.log contains at least 2 timestamped hash entries
+Grafana dashboard "PDPL Accountability Dashboard" displays both panels with live data
+evidence_pack_*.tar.gz exists with a matching checksum file
+Troubleshooting
+Promtail not shipping logs: check file permissions on log paths and Promtail's positions.yaml for stuck offsets
+auditd rule lost on reboot: ensure rule is in /etc/audit/rules.d/audit.rules, not just added via auditctl
+Grafana can't reach Loki: confirm Loki is bound to localhost:3100 and firewall allows local traffic
+Conclusion
+In this lab, you built an end-to-end accountability logging pipeline on a single Linux host: capturing file and database access events with auditd/rsyslog, centralizing them in Loki via Promtail, generating tamper-evident hourly hash ledgers, visualizing access patterns in Grafana, and assembling a structured evidence pack. These skills directly support demonstrating compliance with GDPR Article 5(2) accountability and GCC PDPL requirements, and are applicable to real-world Security Engineer and Compliance Analyst responsibilities, including audits aligned with ISO 27001 and CISA frameworks.
