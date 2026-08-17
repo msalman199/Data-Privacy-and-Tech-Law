@@ -1,0 +1,217 @@
+Vendor Due Diligence and DPA Drafting
+Objectives
+By completing this lab, you will:
+
+Build and score a vendor security questionnaire against a control baseline using CLI tools
+Parse vendor responses programmatically to identify compliance gaps
+Draft DPA clauses covering GDPR Art. 28, UAE PDPL, and KSA PDPL sub-processor requirements
+Create a cross-border transfer addendum for GCC-to-international data flows
+Build a remediation tracker with status automation using shell scripting and Markdown/CSV
+Prerequisites
+Basic Linux CLI familiarity (bash, file editing with nano/vim)
+Basic understanding of GDPR Article 28, UAE PDPL, KSA PDPL concepts
+Python 3 installed (for parsing script)
+No prior DPA drafting experience required
+Environment Setup
+You will use a single Linux machine provided via Start Lab.
+
+mkdir -p ~/vendor-dd-lab/{questionnaire,responses,dpa,tracker}
+cd ~/vendor-dd-lab
+python3 -m venv venv && source venv/bin/activate
+pip install pandas tabulate
+Task 1: Create and Send the Security Questionnaire
+Step 1.1 — Create the questionnaire template.
+
+cat > questionnaire/security_questionnaire.csv << 'EOF'
+control_id,control_domain,question,response,evidence_link
+C1,Access Control,Do you enforce MFA for all admin access?,,
+C2,Encryption,Is data encrypted at rest using AES-256 or equivalent?,,
+C3,Encryption,Is data encrypted in transit (TLS 1.2+)?,,
+C4,Sub-processing,Do you use sub-processors? List all with location.,,
+C5,Data Residency,Where is data physically stored/processed?,,
+C6,Breach Notification,What is your breach notification SLA (hours)?,,
+C7,Data Deletion,Can you certify deletion within 30 days of contract end?,,
+C8,Audit Rights,Do you permit client audits or independent assessments?,,
+EOF
+Step 1.2 — Simulate sending to a mock vendor (email simulation via file drop):
+
+cp questionnaire/security_questionnaire.csv responses/vendor_acme_response.csv
+echo "Questionnaire sent to vendor_acme@mockvendor.test on $(date)" >> tracker/activity_log.txt
+Step 1.3 — Manually fill mock vendor answers. Open the file and populate the response and evidence_link columns with realistic (partially non-compliant) answers, e.g.:
+
+C1: "Yes, MFA enforced"
+C4: "Yes - AWS (Ireland), SubProcessor-X (India)" (intentionally incomplete — no KSA/UAE disclosure)
+C7: leave blank (simulates a gap)
+Task 2: Review Responses Against Control Baseline
+Step 2.1 — Define your baseline (pass/fail criteria) in JSON:
+
+cat > tracker/baseline.json << 'EOF'
+{
+  "C1": {"required_keyword": "MFA", "severity": "High"},
+  "C2": {"required_keyword": "AES-256", "severity": "High"},
+  "C3": {"required_keyword": "TLS", "severity": "High"},
+  "C4": {"required_keyword": "location", "severity": "Critical"},
+  "C6": {"required_keyword": "hours", "severity": "Medium"},
+  "C7": {"required_keyword": "30 days", "severity": "High"}
+}
+EOF
+Step 2.2 — Complete the gap-analysis script. Fill in the TODOs:
+
+# save as tracker/review_responses.py
+import csv, json
+
+def load_baseline(path: str) -> dict:
+    """Load control baseline JSON."""
+    # TODO: open file and json.load it, return dict
+    pass
+
+def review_response(row: dict, baseline: dict) -> str:
+    """
+    Compare a single questionnaire row against baseline keyword.
+    Return 'PASS', 'FAIL', or 'MISSING' (if response is blank).
+    """
+    control_id = row["control_id"]
+    response = row["response"].strip()
+    # TODO: if response is empty -> return "MISSING"
+    # TODO: if control_id not in baseline -> return "N/A"
+    # TODO: check if baseline keyword appears (case-insensitive) in response
+    # TODO: return "PASS" or "FAIL" accordingly
+    pass
+
+def generate_report(csv_path: str, baseline_path: str, output_path: str):
+    """Read CSV, apply review_response to each row, write gap report CSV."""
+    baseline = load_baseline(baseline_path)
+    # TODO: read csv_path with csv.DictReader
+    # TODO: for each row, call review_response, add 'status' and 'severity' fields
+    # TODO: write results to output_path using csv.DictWriter
+    pass
+
+if __name__ == "__main__":
+    generate_report(
+        "responses/vendor_acme_response.csv",
+        "baseline.json",
+        "vendor_acme_gap_report.csv"
+    )
+Step 2.3 — Run and inspect:
+
+cd tracker
+python3 review_responses.py
+column -s, -t < vendor_acme_gap_report.csv | less
+Checkpoint: Your report should flag C4 as FAIL/Critical (no KSA/UAE disclosure) and C7 as MISSING/High.
+
+Task 3: Draft DPA Clauses with Sub-Processor Flow-Down
+Step 3.1 — Create the DPA skeleton:
+
+cat > dpa/DPA_draft.md << 'EOF'
+# Data Processing Agreement (Draft)
+
+## 1. Subject Matter and Duration
+[TODO: describe processing purpose and contract term]
+
+## 2. Nature and Purpose of Processing (GDPR Art. 28(3))
+[TODO: list categories of data subjects and personal data]
+
+## 3. Processor Obligations
+- Process personal data only on documented instructions (GDPR Art. 28(3)(a))
+- Ensure confidentiality of authorized personnel (Art. 28(3)(b))
+- Implement Art. 32 security measures
+- [TODO: add UAE PDPL Article reference for processor obligations]
+- [TODO: add KSA PDPL processor obligation reference]
+
+## 4. Sub-Processor Flow-Down (Art. 28(2) & (4))
+- Controller grants [general/specific] written authorization for sub-processors
+- Processor must flow down the SAME data protection obligations via written contract
+- Processor remains fully liable for sub-processor performance
+- [TODO: add 30-day prior notice clause for new sub-processors]
+- [TODO: add Controller's right to object clause]
+
+## 5. Cross-Border Transfer
+[See addendum in Task 4]
+
+## 6. Audit and Assistance
+[TODO: define audit frequency, breach notification SLA (align to C6 response)]
+
+## 7. Data Deletion/Return
+[TODO: define deletion timeline - flag gap found in Task 2, e.g. C7]
+EOF
+Step 3.2 — Complete each [TODO] referencing:
+
+GDPR Art. 28(2)/(4) for sub-processor authorization and flow-down
+UAE PDPL Article 10 (processor obligations)
+KSA PDPL Article 11-13 (sub-processing consent requirements)
+Task 4: Add Cross-Border Transfer Addendum
+Step 4.1 — Create the addendum file:
+
+cat > dpa/cross_border_addendum.md << 'EOF'
+# Cross-Border Data Transfer Addendum
+
+## Transfer Mechanism
+- [TODO: specify mechanism - SCCs / adequacy decision / KSA-approved transfer rules]
+
+## Destination Countries (from vendor questionnaire C4/C5)
+- [TODO: list each sub-processor location disclosed]
+
+## Safeguards
+- [TODO: describe supplementary technical/organizational measures if destination lacks adequacy]
+
+## KSA PDPL Specific Requirement
+- [TODO: reference SDAIA transfer impact assessment requirement]
+
+## UAE PDPL Specific Requirement
+- [TODO: reference adequacy/contractual safeguard requirement under UAE PDPL Art. 22]
+EOF
+Step 4.2 — Populate using gap report findings from Task 2 (e.g., India-based sub-processor requires a documented safeguard since it lacks GCC/EU adequacy).
+
+Task 5: Build the Remediation Tracker
+Step 5.1 — Complete the tracker generator script:
+
+# save as tracker/build_tracker.py
+import csv
+from datetime import datetime, timedelta
+
+def build_tracker(gap_report_path: str, output_path: str):
+    """
+    Read gap report, create remediation tracker with:
+    control_id, issue, severity, owner, due_date, status
+    Due date rule: Critical=7 days, High=14 days, Medium=30 days from today.
+    """
+    severity_days = {"Critical": 7, "High": 14, "Medium": 30}
+    # TODO: read gap_report_path
+    # TODO: filter rows where status in ('FAIL','MISSING')
+    # TODO: for each, compute due_date = today + severity_days[severity]
+    # TODO: write output CSV with columns:
+    #       control_id, issue, severity, owner, due_date, status
+    #       set status="Open", owner="TBD"
+    pass
+
+if __name__ == "__main__":
+    build_tracker("vendor_acme_gap_report.csv", "remediation_tracker.csv")
+Step 5.2 — Run and review:
+
+python3 build_tracker.py
+column -s, -t < remediation_tracker.csv
+Step 5.3 — Manually update the tracker: assign an owner (e.g., "Privacy Counsel") to each open item using nano remediation_tracker.csv.
+
+Verification
+Confirm lab completion by checking all artifacts exist and contain required content:
+
+cd ~/vendor-dd-lab
+ls -la questionnaire/ responses/ dpa/ tracker/
+
+# Verify gap report flagged issues
+grep -E "FAIL|MISSING" tracker/vendor_acme_gap_report.csv
+
+# Verify DPA has no unfilled TODOs
+grep -c "TODO" dpa/DPA_draft.md dpa/cross_border_addendum.md
+# Expect: 0 0 (all TODOs completed)
+
+# Verify tracker has remediation entries
+wc -l tracker/remediation_tracker.csv
+Expected outcome: gap report shows at least 2 flagged controls, DPA and addendum files have zero remaining TODOs, and tracker lists open remediation items with owners and due dates.
+
+Troubleshooting
+Script errors on empty CSV fields: ensure no trailing commas/blank rows in the source CSV
+json.load fails: validate baseline.json syntax with python3 -m json.tool baseline.json
+Date math errors in Python: ensure datetime.timedelta receives integer days, not strings
+Conclusion
+In this lab, you performed an end-to-end vendor due diligence and DPA drafting exercise. You created a security questionnaire, simulated vendor responses, and built a Python-based gap analysis tool to score responses against a compliance baseline. You then drafted DPA clauses addressing GDPR Article 28 sub-processor flow-down obligations, incorporated UAE PDPL and KSA PDPL requirements, and authored a cross-border transfer addendum addressing non-adequate destination countries identified during review. Finally, you built an automated remediation tracker to manage identified gaps with severity-based due dates. These skills directly support Vendor Risk Manager and Privacy Counsel responsibilities and align with IAPP CIPM competencies in third-party risk management.
