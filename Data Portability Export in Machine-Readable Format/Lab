@@ -1,0 +1,213 @@
+Data Portability Export in Machine-Readable Format
+Objectives
+By the end of this lab, you will be able to:
+
+Identify which user data fields qualify as "portable" under GDPR Article 20
+Build a Python script that exports user data into JSON and CSV formats
+Sign an export file with GPG to guarantee its integrity
+Transfer the export using SFTP on a local machine
+Validate the exported JSON against a schema
+Prerequisites
+Basic Python knowledge (variables, functions, dictionaries)
+Basic Linux command line familiarity (cd, ls, running scripts)
+No prior GDPR or cryptography experience needed
+Estimated time: 45-60 minutes
+Environment Setup
+You are provided a single Linux machine (via Start Lab). All work happens locally — no cloud accounts needed.
+
+Open a terminal on your lab machine.
+Install required packages:
+sudo apt update
+sudo apt install -y python3 python3-pip gnupg openssh-server
+pip3 install jsonschema
+Create a working directory:
+mkdir ~/data-portability-lab
+cd ~/data-portability-lab
+Task 1: Identify Portable Fields in a Sample Database
+We will use a simple SQLite-like sample stored as a Python dictionary to keep things beginner-friendly.
+
+Create a file named sample_data.py:
+nano sample_data.py
+Paste this sample user record (includes both portable and non-portable fields):
+# sample_data.py
+# This simulates a row from a user database.
+
+USER_RECORD = {
+    "user_id": "U1001",
+    "full_name": "Aisha Al Farsi",           # Portable - provided by user
+    "email": "aisha@example.com",            # Portable - provided by user
+    "phone": "+971500000000",                # Portable - provided by user
+    "signup_date": "2023-01-15",             # Portable - provided by user
+    "preferences": {"newsletter": True},      # Portable - provided by user
+    "internal_risk_score": 0.82,             # NOT portable - internal analytics
+    "admin_notes": "VIP customer"            # NOT portable - internal use only
+}
+GDPR Article 20 only covers data the user provided — not data the company derived internally.
+Portable: full_name, email, phone, signup_date, preferences
+Not portable: internal_risk_score, admin_notes
+Task 2: Build the Python Exporter (JSON + CSV)
+Create exporter.py. Complete the TODOs step by step.
+
+# exporter.py
+import json
+import csv
+from sample_data import USER_RECORD
+
+# List only the fields allowed under Article 20 (data provided BY the user)
+PORTABLE_FIELDS = ["user_id", "full_name", "email", "phone", "signup_date", "preferences"]
+
+
+def extract_portable_data(record: dict, fields: list) -> dict:
+    """
+    Filter the full record down to only portable fields.
+
+    Args:
+        record: Full user data dictionary
+        fields: List of field names considered portable
+
+    Returns:
+        Dictionary containing only the portable fields
+    """
+    # TODO: Build a new dictionary using only keys in 'fields'
+    # Hint: use a dictionary comprehension
+    pass
+
+
+def export_to_json(data: dict, filename: str) -> None:
+    """
+    Save the portable data dictionary as a JSON file.
+
+    Args:
+        data: Portable data dictionary
+        filename: Output file path (e.g. "export.json")
+    """
+    # TODO: Open the file in write mode
+    # TODO: Use json.dump() to write 'data' with indent=2
+    pass
+
+
+def export_to_csv(data: dict, filename: str) -> None:
+    """
+    Save the portable data dictionary as a CSV file.
+    Nested fields (like 'preferences') should be converted to strings.
+
+    Args:
+        data: Portable data dictionary
+        filename: Output file path (e.g. "export.csv")
+    """
+    # TODO: Open the file in write mode
+    # TODO: Create a csv.writer object
+    # TODO: Write a header row (field names)
+    # TODO: Write one data row (convert dict/nested values with str())
+    pass
+
+
+if __name__ == "__main__":
+    portable_data = extract_portable_data(USER_RECORD, PORTABLE_FIELDS)
+    export_to_json(portable_data, "export.json")
+    export_to_csv(portable_data, "export.csv")
+    print("Export complete: export.json and export.csv created.")
+Run it:
+
+python3 exporter.py
+cat export.json
+cat export.csv
+Expected output: Two files containing only the 5 portable fields — no internal_risk_score or admin_notes.
+
+Task 3: Sign the Export with GPG
+Generate a GPG key (if you don't have one):
+gpg --full-generate-key
+# Choose defaults, use any name/email, set a passphrase you will remember
+List your key to confirm it exists:
+gpg --list-keys
+Sign the JSON export to guarantee integrity (detached signature):
+gpg --output export.json.sig --detach-sign export.json
+Verify the signature:
+gpg --verify export.json.sig export.json
+You should see "Good signature" in the output.
+
+Task 4: SFTP Delivery (Local)
+We simulate secure delivery using the local SSH/SFTP server.
+
+Ensure SSH service is running:
+sudo systemctl status ssh
+sudo systemctl start ssh
+Connect via SFTP to your own machine (localhost):
+sftp localhost
+Inside the SFTP prompt, upload the files:
+put export.json
+put export.json.sig
+put export.csv
+exit
+Confirm files exist in your home directory:
+ls -la ~/export.json ~/export.json.sig ~/export.csv
+Task 5: Validate the JSON with a Schema
+Create schema.json:
+nano schema.json
+{
+  "type": "object",
+  "required": ["user_id", "full_name", "email", "phone", "signup_date"],
+  "properties": {
+    "user_id": {"type": "string"},
+    "full_name": {"type": "string"},
+    "email": {"type": "string"},
+    "phone": {"type": "string"},
+    "signup_date": {"type": "string"},
+    "preferences": {"type": "object"}
+  }
+}
+Create validate.py. Complete the TODOs:
+# validate.py
+import json
+from jsonschema import validate, ValidationError
+
+
+def load_json_file(filename: str) -> dict:
+    """Load and return JSON content from a file."""
+    # TODO: Open file, use json.load(), return the result
+    pass
+
+
+def validate_export(data_file: str, schema_file: str) -> bool:
+    """
+    Validate data_file against schema_file.
+
+    Returns:
+        True if valid, False otherwise
+    """
+    # TODO: Load both the data and the schema using load_json_file
+    # TODO: Call validate(instance=data, schema=schema)
+    # TODO: Wrap in try/except ValidationError, print result, return True/False
+    pass
+
+
+if __name__ == "__main__":
+    result = validate_export("export.json", "schema.json")
+    print("Validation passed!" if result else "Validation FAILED.")
+Run it:
+
+python3 validate.py
+Verification
+Confirm the full lab worked correctly:
+
+# 1. Check export files exist
+ls -la export.json export.csv export.json.sig
+
+# 2. Confirm only portable fields are present (no admin_notes / risk_score)
+grep -i "admin_notes\|internal_risk_score" export.json && echo "FAIL: leaked field" || echo "PASS: no internal fields"
+
+# 3. Verify GPG signature
+gpg --verify export.json.sig export.json
+
+# 4. Confirm schema validation passed
+python3 validate.py
+All four checks should succeed with no errors.
+
+Troubleshooting
+"command not found: gpg" — reinstall with sudo apt install gnupg
+SFTP connection refused — run sudo systemctl start ssh and retry
+jsonschema import error — run pip3 install jsonschema again, check pip3 list
+GPG signature fails — ensure you signed export.json after your last edit; re-run signing step
+Empty export.json — check that extract_portable_data returns a dictionary, not None
+Conclusion
+In this lab, you implemented a simplified but realistic GDPR Article 20 data portability workflow. You learned to distinguish portable (user-provided) data from non-portable (internally derived) data, built a Python exporter producing both JSON and CSV formats, secured the export with a GPG digital signature for integrity verification, delivered it via SFTP, and validated the output against a JSON schema. These skills map directly to backend engineering tasks required for GDPR/CIPT-aligned data privacy compliance work.
