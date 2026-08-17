@@ -1,0 +1,191 @@
+Independent Supervisory Authority Reporting Drill
+Objectives
+By the end of this lab, you will be able to:
+
+Build a simple local web form to intake data protection complaints
+Investigate a simulated complaint using log analysis techniques
+Draft a formal remedial action decision document
+Compile annual data protection statistics using a Jupyter notebook
+Generate a publishable oversight report in PDF format
+Prerequisites
+Basic Python (Flask) and command-line familiarity
+Understanding of data protection concepts (breach notification, complaint handling, DPIAs)
+Basic knowledge of log file structure (timestamps, IP addresses, status codes)
+Familiarity with Markdown/Jupyter notebooks
+Environment Setup
+Al Nafi provides a single Linux machine via Start Lab. Run the following to prepare your environment:
+
+sudo apt update
+sudo apt install -y python3-pip python3-venv pandoc texlive-latex-base
+python3 -m venv sa_lab_env
+source sa_lab_env/bin/activate
+pip install flask pandas matplotlib jupyter nbconvert
+mkdir -p ~/sa_drill/{app,logs,reports,notebook}
+cd ~/sa_drill
+Download the simulated log file (or create it manually if offline):
+
+cat << 'EOF' > logs/access.log
+2024-03-01 09:12:33 192.168.1.10 GET /user/4521/export STATUS=200
+2024-03-01 09:14:02 192.168.1.10 GET /user/4521/export STATUS=200
+2024-03-01 09:14:45 192.168.1.55 GET /user/4521/profile STATUS=403
+2024-03-02 11:20:10 192.168.1.10 POST /admin/bulk_export STATUS=200
+2024-03-02 11:21:00 192.168.1.10 GET /user/9981/export STATUS=200
+EOF
+Tasks
+Task 1: Draft a Complaint Intake Form (Local Webapp)
+Create a minimal Flask app that captures complaint details (complainant, data subject, nature of complaint, date).
+
+# app/intake_app.py
+from flask import Flask, request, render_template_string
+import json, datetime
+
+app = Flask(__name__)
+COMPLAINTS_FILE = "complaints.json"
+
+FORM_HTML = """
+<form method="POST">
+  Complainant Name: <input name="name"><br>
+  Email: <input name="email"><br>
+  Nature of Complaint: <textarea name="nature"></textarea><br>
+  Data Subject ID: <input name="subject_id"><br>
+  <input type="submit">
+</form>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def intake():
+    if request.method == "POST":
+        # TODO: Build a dict with form fields + a timestamp + a unique complaint ID
+        # TODO: Append the dict to COMPLAINTS_FILE (create file if missing)
+        # TODO: Return a confirmation message showing the complaint ID
+        pass
+    return FORM_HTML
+
+if __name__ == "__main__":
+    app.run(port=5000)
+Run it and submit at least one test complaint via browser or curl:
+
+python3 app/intake_app.py &
+curl -X POST -d "name=Jane Doe&email=jane@example.com&nature=Unauthorized export of my data&subject_id=4521" http://127.0.0.1:5000/
+Verify complaints.json was created with your submitted entry.
+Task 2: Investigate the Complaint Using Log Evidence
+Write a Python script to parse logs/access.log and correlate entries with the subject_id from the complaint.
+
+# app/investigate.py
+import re
+
+LOG_FILE = "logs/access.log"
+
+def parse_logs(subject_id: str) -> list:
+    """
+    Search log file for entries referencing the given subject_id.
+
+    Args:
+        subject_id: The data subject ID under investigation
+
+    Returns:
+        List of matching log line dicts (timestamp, ip, action, status)
+    """
+    # TODO: Open LOG_FILE and read lines
+    # TODO: Use regex to extract timestamp, IP, HTTP method+path, status
+    # TODO: Filter lines containing subject_id
+    # TODO: Return list of structured dicts
+    pass
+
+if __name__ == "__main__":
+    results = parse_logs("4521")
+    for r in results:
+        print(r)
+Run the script: python3 app/investigate.py
+Identify whether the access pattern indicates unauthorized bulk export (hint: check repeated GET/export and any correlated /admin/bulk_export calls from the same IP).
+Task 3: Issue a Remedial Action Decision Document
+Create a Markdown decision document summarizing findings and required remedial actions, mirroring formats used by SDAIA/ICO/UAE Data Office.
+
+cat << 'EOF' > reports/decision_2024_001.md
+# Regulatory Decision Notice
+
+**Case Reference:** DPA-2024-001
+**Date Issued:** $(date +%Y-%m-%d)
+**Subject Organization:** [TODO: Insert org name]
+
+## Summary of Complaint
+[TODO: Summarize complainant's allegation]
+
+## Findings
+[TODO: Insert findings from log investigation - cite timestamps/IPs]
+
+## Legal Basis
+[TODO: Reference relevant article, e.g., PDPL Article X / UK GDPR Art. 5]
+
+## Remedial Actions Required
+1. [TODO]
+2. [TODO]
+
+## Compliance Deadline
+[TODO: Insert date, e.g., 30 days from issuance]
+EOF
+Fill in all TODO placeholders based on your Task 2 findings.
+Task 4: Compile Annual Statistics in a Linux Notebook
+Launch Jupyter and build a notebook that aggregates complaint statistics.
+
+jupyter notebook --no-browser --port=8888 --ip=0.0.0.0 &
+In notebook/annual_stats.ipynb, implement:
+
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def load_complaints(path: str) -> pd.DataFrame:
+    """
+    Load complaints.json into a pandas DataFrame.
+    """
+    # TODO: Read JSON lines/array into DataFrame
+    pass
+
+def summarize_stats(df: pd.DataFrame) -> dict:
+    """
+    Compute total complaints, complaints by nature category,
+    and average resolution time (if resolved_date exists).
+    """
+    # TODO: Compute counts and groupby summaries
+    # TODO: Return a dict of summary statistics
+    pass
+
+# TODO: Call functions, print summary, and plot a bar chart
+# of complaints by category using matplotlib
+Save at least one chart as notebook/complaints_chart.png.
+Task 5: Publish an Oversight Report PDF
+Combine the decision document and statistics into a single PDF report using pandoc.
+
+cat reports/decision_2024_001.md > reports/annual_oversight_report.md
+echo "\n## Annual Statistics\n" >> reports/annual_oversight_report.md
+echo "![Complaints Chart](../notebook/complaints_chart.png)" >> reports/annual_oversight_report.md
+
+pandoc reports/annual_oversight_report.md -o reports/annual_oversight_report.pdf
+Confirm the PDF was generated and contains both narrative and chart.
+Verification
+Run these checks on your machine to confirm task completion:
+
+# Task 1
+ls app/complaints.json && cat app/complaints.json
+
+# Task 2
+python3 app/investigate.py | grep "4521"
+
+# Task 3
+grep -c "TODO" reports/decision_2024_001.md   # should return 0 after completion
+
+# Task 4
+ls notebook/complaints_chart.png
+
+# Task 5
+ls -lh reports/annual_oversight_report.pdf
+All commands should return valid file contents/paths with no errors and no remaining TODO placeholders.
+
+Troubleshooting
+Flask port in use: kill existing process with pkill -f intake_app.py
+Pandoc PDF fails: ensure texlive-latex-base installed; retry with --pdf-engine=xelatex if needed
+Jupyter not accessible: check firewall/port 8888 is open on the lab VM
+Regex not matching logs: print raw lines first to confirm log format before applying regex
+Conclusion
+In this lab, you simulated the full lifecycle of a data protection authority's complaint handling and annual reporting workflow. You built a complaint intake webapp, investigated evidence using log analysis, drafted a formal regulatory decision notice, compiled statistical summaries in a notebook, and published a consolidated oversight report as a PDF. These skills directly mirror real-world responsibilities of Regulatory Liaisons and DPOs operating under SDAIA, ICO, and UAE Data Office frameworks, and align with IAPP CIPM competency areas in program governance and incident response reporting.
